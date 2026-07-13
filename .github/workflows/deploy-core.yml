@@ -1,0 +1,82 @@
+name: Deploy core app
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  REGISTRY: crtathataprod.azurecr.io
+  IMAGE_NAME: tathata-core
+  RESOURCE_GROUP: rg-tathata-core-prod
+  CONTAINER_APP_NAME: ca-tathata-core-prod
+  KEY_VAULT_NAME: kv-tathata-prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npx tsc --noEmit
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Fetch DATABASE_URL from Key Vault
+        run: |
+          DATABASE_URL=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Run database migrations
+        run: npx drizzle-kit migrate
+
+      - name: Log in to ACR (via existing OIDC session)
+        run: az acr login --name crtathataprod
+
+      - name: Build and push image
+        run: |
+          IMAGE_TAG="$REGISTRY/$IMAGE_NAME:${{ github.sha }}"
+          docker build -t "$IMAGE_TAG" .
+          docker push "$IMAGE_TAG"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Deploy new revision
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$IMAGE_TAG" \
+            --set-env-vars "DATABASE_URL=secretref:database-url" \
+            --secrets "database-url=$DATABASE_URL"
+
+      - name: Health check
+        run: |
+          FQDN=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$FQDN/api/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: status $STATUS, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after retries"
+          exit 1
