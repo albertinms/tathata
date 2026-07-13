@@ -8,6 +8,20 @@
       "when": 1783951037043,
       "tag": "0000_unique_magus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783979637228,
+      "tag": "0001_t1_4_auth_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783980028029,
+      "tag": "0002_t1_4_accounts_type_text",
+      "breakpoints": true
     }
   ]
 }
