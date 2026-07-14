@@ -40,7 +40,9 @@ export const purchaseStatusEnum = pgEnum("purchase_status", [
   "failed",
   "refunded",
 ]);
+// "pending"：T3.2 新增，regKey 申请已送出、等待使用者在 LINE app 内完成授权确认，尚未变成 active
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "pending",
   "active",
   "past_due",
   "canceled",
@@ -56,6 +58,16 @@ export const divinationTypeEnum = pgEnum("divination_type", [
   "lenormand",
   "lingqian",
   "date_selection",
+]);
+export const planBillingIntervalEnum = pgEnum("plan_billing_interval", [
+  "one_time",
+  "monthly",
+  "yearly",
+  "free",
+]);
+export const entitlementResourceTypeEnum = pgEnum("entitlement_resource_type", [
+  "chapter",
+  "course",
 ]);
 
 // ---- users ----
@@ -212,6 +224,56 @@ export const userChartLink = pgTable(
   ],
 );
 
+// ---- plans ----
+// T3.4：比照 Voxel Plans/Roles 模式，可配置会员方案；规格见 .claude/specs/T3.4-membership-entitlements-spec.md
+
+export const plans = pgTable(
+  "plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    // 数字越大权限越高，用于「至少需要 X 级」的简单比较；理由见 spec 2.1 节
+    tierLevel: integer("tier_level").notNull().default(0),
+    billingInterval: planBillingIntervalEnum("billing_interval").notNull(),
+    // T3.2 实作时补上：LINE Pay 定期定额需要实际扣款金额；免费方案两栏皆 null
+    priceAmount: integer("price_amount"),
+    priceCurrency: text("price_currency"),
+    isDefault: boolean("is_default").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("plans_single_default_unique").on(table.isDefault).where(sql`${table.isDefault}`),
+  ],
+);
+
+// ---- plan_entitlements ----
+// resource_pattern 支援 SQL LIKE 万用字元或 '*'（该 resource_type 全放行），理由见 spec 2.2 节
+
+export const planEntitlements = pgTable(
+  "plan_entitlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "cascade" }),
+    resourceType: entitlementResourceTypeEnum("resource_type").notNull(),
+    resourcePattern: text("resource_pattern").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("plan_entitlements_plan_id_idx").on(table.planId),
+    uniqueIndex("plan_entitlements_unique").on(
+      table.planId,
+      table.resourceType,
+      table.resourcePattern,
+    ),
+  ],
+);
+
 // ---- purchases ----
 // 只记录本 app 自有一次性购买（命书套餐／课程），不含 Medusa 电商订单（见 T5.1）
 
@@ -240,7 +302,7 @@ export const purchases = pgTable(
 );
 
 // ---- subscriptions ----
-// plan_ref 暂不建 FK，等 T3.4 的 plans 表落地后另补 migration
+// planRef 已由 T3.4 的 plans 表取代，标记 deprecated 但不删除／不搬迁资料（本表建立以来尚无真实订阅写入）
 
 export const subscriptions = pgTable(
   "subscriptions",
@@ -249,9 +311,14 @@ export const subscriptions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
-    planRef: text("plan_ref").notNull(),
+    /** @deprecated 由 planId 取代，见 T3.4 spec 2.3 节；保留栏位不删除，遵循 CLAUDE.md 规则四。原为 notNull，T3.4 放宽为 nullable，因表内尚无真实资料、新写入一律走 planId */
+    planRef: text("plan_ref"),
+    planId: uuid("plan_id").references(() => plans.id),
     status: subscriptionStatusEnum("status").notNull(),
     linepayRegKey: text("linepay_reg_key"),
+    // T3.2 新增：setup 阶段（request→confirm）用来反查这笔订阅的暂时栏位，
+    // 与 linepayRegKey（confirm 成功后取得，长期使用的定期定额金钥）用途不同、不可合并
+    linepayTransactionId: text("linepay_transaction_id"),
     nextBillingDate: date("next_billing_date"),
     retryCount: integer("retry_count").notNull().default(0),
     lastPaymentAt: timestamp("last_payment_at", { withTimezone: true }),
