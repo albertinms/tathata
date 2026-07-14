@@ -60,12 +60,15 @@ jobs:
 
       - name: Deploy new revision
         run: |
+          az containerapp secret set \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --secrets "database-url=$DATABASE_URL"
           az containerapp update \
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --image "$IMAGE_TAG" \
-            --set-env-vars "DATABASE_URL=secretref:database-url" \
-            --secrets "database-url=$DATABASE_URL"
+            --set-env-vars "DATABASE_URL=secretref:database-url"
 
       - name: Health check
         run: |
