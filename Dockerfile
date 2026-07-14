@@ -9,6 +9,11 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# next build 会静态分析路由模组（含 db/client.ts、auth.ts），需要语法上有效的
+# DATABASE_URL 才能通过 @auth/drizzle-adapter 的型别侦测；build 阶段不会真的连线，
+# 真正的连线字串由 Container App 在执行期以 secret 环境变数注入（见 deploy-core.yml）
+ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
+ENV DATABASE_URL=$DATABASE_URL
 RUN npm run build
 
 FROM base AS runner
