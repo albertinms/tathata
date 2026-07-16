@@ -11,6 +11,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   uniqueIndex,
   uuid,
@@ -68,6 +69,19 @@ export const planBillingIntervalEnum = pgEnum("plan_billing_interval", [
 export const entitlementResourceTypeEnum = pgEnum("entitlement_resource_type", [
   "chapter",
   "course",
+]);
+export const bookingTypeEnum = pgEnum("booking_type", ["one_to_one", "workshop"]);
+export const workshopSessionStatusEnum = pgEnum("workshop_session_status", [
+  "open",
+  "closed",
+  "canceled",
+]);
+export const bookingStatusEnum = pgEnum("booking_status", [
+  "pending",
+  "confirmed",
+  "canceled",
+  "completed",
+  "no_show",
 ]);
 
 // ---- users ----
@@ -350,5 +364,132 @@ export const divinationLogs = pgTable(
   (table) => [
     index("divination_logs_user_id_idx").on(table.userId),
     index("divination_logs_created_at_idx").on(table.createdAt),
+  ],
+);
+
+// ---- booking_services ----
+// T6.1：极简自建预约系统，取代 Cal.diy（授权风险放弃，见 .claude/decisions/问题清单-Caldiy商用限制.md）
+// 技术规格 .claude/specs/T6.1-booking-system-spec.md 第二节
+
+export const bookingServices = pgTable("booking_services", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  type: bookingTypeEnum("type").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  // 仅 one_to_one 使用；workshop 由 workshop_sessions 各自定义起讫时间
+  durationMinutes: integer("duration_minutes"),
+  // one_to_one 固定 1；workshop 为预设人数上限（可被个别场次 workshop_sessions.capacity 覆写）
+  capacity: integer("capacity").notNull().default(1),
+  priceAmount: integer("price_amount").notNull(),
+  // 预留未来多负责人扩充，本轮不使用排班分配逻辑，见 spec 一节
+  providerId: uuid("provider_id").references(() => users.id),
+  cancelDeadlineHours: integer("cancel_deadline_hours").notNull().default(24),
+  // 期限内取消的退款比例（0~100），预设 0＝不退款；数值留给使用者拍板，见 spec 6.2 节
+  lateCancelRefundPct: integer("late_cancel_refund_pct").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---- availability_rules ----
+// 服务提供者的每週固定可预约时段，仅 one_to_one 服务使用
+
+export const availabilityRules = pgTable(
+  "availability_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => bookingServices.id, { onDelete: "cascade" }),
+    dayOfWeek: integer("day_of_week").notNull(), // 0=週日…6=週六
+    startTime: time("start_time").notNull(),
+    endTime: time("end_time").notNull(),
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveUntil: date("effective_until"), // 空值＝无限期生效
+  },
+  (table) => [index("availability_rules_service_id_idx").on(table.serviceId)],
+);
+
+// ---- availability_exceptions ----
+// 例外：请假或临时加开，仅 one_to_one 使用
+
+export const availabilityExceptions = pgTable(
+  "availability_exceptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => bookingServices.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    // false＝当天请假整天不开放；true＋startTime/endTime＝临时加开的额外时段
+    isAvailable: boolean("is_available").notNull(),
+    startTime: time("start_time"),
+    endTime: time("end_time"),
+    reason: text("reason"),
+  },
+  (table) => [index("availability_exceptions_service_id_date_idx").on(table.serviceId, table.date)],
+);
+
+// ---- workshop_sessions ----
+// 工作坊具体场次，仅 workshop 服务使用
+
+export const workshopSessions = pgTable(
+  "workshop_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => bookingServices.id, { onDelete: "cascade" }),
+    sessionStartAt: timestamp("session_start_at", { withTimezone: true }).notNull(),
+    sessionEndAt: timestamp("session_end_at", { withTimezone: true }).notNull(),
+    // 覆写 booking_services.capacity；为空则沿用预设
+    capacity: integer("capacity"),
+    locationOrLink: text("location_or_link"),
+    status: workshopSessionStatusEnum("status").notNull().default("open"),
+  },
+  (table) => [
+    index("workshop_sessions_service_id_idx").on(table.serviceId),
+    index("workshop_sessions_start_at_idx").on(table.sessionStartAt),
+  ],
+);
+
+// ---- bookings ----
+// 实际预约纪录，one_to_one／workshop 两种类型共用一张表；状态机见 spec 五节
+
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => bookingServices.id),
+    // 仅 workshop 填写，对应 workshop_sessions
+    sessionId: uuid("session_id").references(() => workshopSessions.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    status: bookingStatusEnum("status").notNull().default("pending"),
+    // 藍新 MPG 交易序号，退款时需要；付款完成（NotifyURL 通知）后才会有值
+    newebpayTradeNo: text("newebpay_trade_no"),
+    // 商店订单编号，建立付款请求时的 MerchantOrderNo
+    newebpayMerchantOrderNo: text("newebpay_merchant_order_no").notNull(),
+    customerNote: text("customer_note"),
+    cancelReason: text("cancel_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    canceledAt: timestamp("canceled_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("bookings_service_id_idx").on(table.serviceId),
+    index("bookings_session_id_idx").on(table.sessionId),
+    index("bookings_user_id_idx").on(table.userId),
+    uniqueIndex("bookings_merchant_order_no_unique").on(table.newebpayMerchantOrderNo),
+    // 防重复预约第一道防线（one_to_one）：同服务同时段只能有一笔 pending/confirmed 预约，
+    // workshop 靠人数上限而非唯一时段限制，见 spec 四节
+    uniqueIndex("bookings_one_to_one_slot_unique")
+      .on(table.serviceId, table.startAt)
+      .where(sql`${table.status} IN ('pending', 'confirmed')`),
   ],
 );
