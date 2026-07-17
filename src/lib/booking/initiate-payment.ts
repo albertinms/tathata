@@ -1,4 +1,4 @@
-import { createMpgPaymentForm, getSiteUrl } from "@/lib/payments/newebpay";
+import { createMpgPaymentForm, getNewebPayCredentials, getSiteUrl } from "@/lib/payments/newebpay";
 
 import { createOneToOneBooking, createWorkshopBooking } from "./create-booking";
 
@@ -12,8 +12,12 @@ export async function startOneToOneBookingCheckout(params: {
   startAt: Date;
   customerNote?: string;
 }) {
-  const { booking, service } = await createOneToOneBooking(params);
+  // 先确认藍新凭证已设定（纯本机检查，无网路 I/O）：排在建立预约之前，
+  // 避免凭证未设定时留下一笔卡在 pending、佔用时段直到 15 分钟逾时释放才解除的预约
+  getNewebPayCredentials();
   const siteUrl = getSiteUrl();
+
+  const { booking, service } = await createOneToOneBooking(params);
 
   const { gatewayUrl, fields } = createMpgPaymentForm({
     merchantOrderNo: booking.newebpayMerchantOrderNo,
@@ -32,8 +36,10 @@ export async function startWorkshopBookingCheckout(params: {
   userId: string;
   customerNote?: string;
 }) {
-  const { booking, service } = await createWorkshopBooking(params);
+  getNewebPayCredentials();
   const siteUrl = getSiteUrl();
+
+  const { booking, service } = await createWorkshopBooking(params);
 
   const { gatewayUrl, fields } = createMpgPaymentForm({
     merchantOrderNo: booking.newebpayMerchantOrderNo,

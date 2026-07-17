@@ -1,5 +1,5 @@
 export { refundNewebPayTrade } from "./close";
-export { getSiteUrl } from "./client";
+export { getNewebPayCredentials, getSiteUrl } from "./client";
 export { createMpgPaymentForm, verifyMpgNotification } from "./mpg";
 export type {
   NewebPayCloseRefundInput,

@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
-import { startLinePayCheckout } from "@/lib/payments/checkout";
+import { NewebPayRedirectForm } from "@/components/payments/newebpay-redirect-form";
+import { startCheckout } from "@/lib/payments/checkout";
 
 export default async function CheckoutPage({
   params,
@@ -19,11 +20,11 @@ export default async function CheckoutPage({
     redirect(`/login?callbackUrl=${encodeURIComponent(`/checkout/${productType}/${productRef}`)}`);
   }
 
-  const { paymentUrl } = await startLinePayCheckout({
+  const { gatewayUrl, fields } = await startCheckout({
     userId: session.user.id,
     productType,
     productRef,
   });
 
-  redirect(paymentUrl);
+  return <NewebPayRedirectForm gatewayUrl={gatewayUrl} fields={fields} />;
 }

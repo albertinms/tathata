@@ -57,6 +57,13 @@
       "when": 1784245078701,
       "tag": "0007_t6_1_booking_system",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784246095445,
+      "tag": "0008_t3_1_newebpay_purchases",
+      "breakpoints": true
     }
   ]
 }

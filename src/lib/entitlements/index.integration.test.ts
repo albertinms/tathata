@@ -82,8 +82,8 @@ describe("entitlements engine (integration)", () => {
       productRef: "course_101",
       amount: 1990,
       currency: "TWD",
-      paymentProvider: "linepay",
-      paymentTransactionId: `test-txn-${Date.now()}`,
+      paymentProvider: "newebpay_mpg",
+      newebpayMerchantOrderNo: `test-txn-${Date.now()}`,
       status: "completed",
     });
 

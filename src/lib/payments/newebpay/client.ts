@@ -8,8 +8,8 @@ const NEWEBPAY_CLOSE_BASE_URL = {
   production: "https://core.newebpay.com",
 } as const;
 
-// 刻意不在 module 顶层读取 env var，理由同 src/lib/payments/linepay/client.ts：
-// Docker build 阶段 next build 会静态分析路由模组，顶层读 env 会在还没设定 NEWEBPAY_* 前让 build 失败
+// 刻意不在 module 顶层读取 env var：Docker build 阶段 next build 会静态分析路由模组，
+// 顶层读 env 会在还没设定 NEWEBPAY_* 前让 build 失败（见 STATE.md T1.2 经验）
 function getNewebPayEnvName() {
   return process.env.NEWEBPAY_ENV === "production" ? "production" : "sandbox";
 }

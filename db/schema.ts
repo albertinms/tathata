@@ -34,7 +34,9 @@ export const engineTypeEnum = pgEnum("engine_type", [
   "numerology",
 ]);
 export const productTypeEnum = pgEnum("product_type", ["book_package", "course"]);
-export const paymentProviderEnum = pgEnum("payment_provider", ["linepay"]);
+// T3.1：2026-07-16 使用者裁示棄用 LINE Pay 改採藍新金流（NewebPay），拆分 MPG（一次性）
+// 与定期定额（订阅，T3.2 使用）两个值，理由见 .claude/specs/T3.1-T3.2-newebpay-spec.md 三节
+export const paymentProviderEnum = pgEnum("payment_provider", ["newebpay_mpg", "newebpay_period"]);
 export const purchaseStatusEnum = pgEnum("purchase_status", [
   "pending",
   "completed",
@@ -304,14 +306,17 @@ export const purchases = pgTable(
     amount: integer("amount").notNull(),
     currency: text("currency").notNull().default("TWD"),
     paymentProvider: paymentProviderEnum("payment_provider").notNull(),
-    paymentTransactionId: text("payment_transaction_id").notNull(),
+    // 商店订单编号，建立付款请求时即产生并写入满足 unique 约束；藍新回传的 TradeNo 另存于下方栏位
+    newebpayMerchantOrderNo: text("newebpay_merchant_order_no").notNull(),
+    // 付款完成（NotifyURL 通知）后才会有值，退款时需要
+    newebpayTradeNo: text("newebpay_trade_no"),
     status: purchaseStatusEnum("status").notNull(),
     purchasedAt: timestamp("purchased_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("purchases_user_id_idx").on(table.userId),
     index("purchases_natal_chart_cache_id_idx").on(table.natalChartCacheId),
-    uniqueIndex("purchases_payment_transaction_id_unique").on(table.paymentTransactionId),
+    uniqueIndex("purchases_merchant_order_no_unique").on(table.newebpayMerchantOrderNo),
   ],
 );
 
