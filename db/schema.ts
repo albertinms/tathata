@@ -334,11 +334,22 @@ export const subscriptions = pgTable(
     planRef: text("plan_ref"),
     planId: uuid("plan_id").references(() => plans.id),
     status: subscriptionStatusEnum("status").notNull(),
-    linepayRegKey: text("linepay_reg_key"),
-    // T3.2 新增：setup 阶段（request→confirm）用来反查这笔订阅的暂时栏位，
-    // 与 linepayRegKey（confirm 成功后取得，长期使用的定期定额金钥）用途不同、不可合并
-    linepayTransactionId: text("linepay_transaction_id"),
+    // 建立委托时即产生并写入满足 unique 约束，NPA-N050 每期通知皆带 MerchantOrderNo，
+    // 用它反查订阅记录（不需等 PeriodNo 才能匹配），角色对应原 linepay_transaction_id
+    newebpayMerOrderNo: text("newebpay_mer_order_no").notNull(),
+    // 委托成立后才有值，是日后修改委托状态/内容（NPA-B051/B052）须带的委托单号，
+    // 角色对应原 linepay_reg_key「长期使用的定期定额金钥」
+    newebpayPeriodNo: text("newebpay_period_no"),
+    // 最近一期的 TradeNo，每次 NPA-N050 通知覆写
+    newebpayTradeNo: text("newebpay_trade_no"),
+    // 以下三栏对应 NPA-N050 通知内容，取代原本自建排程需要自己算「下次扣款日」的逻辑，
+    // 见 .claude/specs/T3.1-T3.2-newebpay-spec.md 2.4 节
+    newebpayNextAuthDate: date("newebpay_next_auth_date"),
+    newebpayAlreadyTimes: integer("newebpay_already_times"),
+    newebpayTotalTimes: integer("newebpay_total_times"),
     nextBillingDate: date("next_billing_date"),
+    // T3.3 语意变更：不再是「本专案主动重试扣款次数」，改为「连续几期授权失败」计数，
+    // 达门槛时主动呼叫终止委托 API（藍新本身会自动继续尝试后续各期，见 spec 2.4 节关键行为）
     retryCount: integer("retry_count").notNull().default(0),
     lastPaymentAt: timestamp("last_payment_at", { withTimezone: true }),
     canceledAt: timestamp("canceled_at", { withTimezone: true }),
@@ -347,6 +358,7 @@ export const subscriptions = pgTable(
   },
   (table) => [
     index("subscriptions_user_id_idx").on(table.userId),
+    uniqueIndex("subscriptions_mer_order_no_unique").on(table.newebpayMerOrderNo),
     uniqueIndex("subscriptions_active_user_unique")
       .on(table.userId)
       .where(sql`${table.status} = 'active'`),

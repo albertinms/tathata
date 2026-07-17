@@ -1,9 +1,4 @@
-const NEWEBPAY_MPG_BASE_URL = {
-  sandbox: "https://ccore.newebpay.com",
-  production: "https://core.newebpay.com",
-} as const;
-
-const NEWEBPAY_CLOSE_BASE_URL = {
+const NEWEBPAY_BASE_URL = {
   sandbox: "https://ccore.newebpay.com",
   production: "https://core.newebpay.com",
 } as const;
@@ -27,11 +22,26 @@ export function getNewebPayCredentials() {
 }
 
 export function getNewebPayMpgGatewayUrl() {
-  return `${NEWEBPAY_MPG_BASE_URL[getNewebPayEnvName()]}/MPG/mpg_gateway`;
+  return `${NEWEBPAY_BASE_URL[getNewebPayEnvName()]}/MPG/mpg_gateway`;
 }
 
 export function getNewebPayCloseApiUrl() {
-  return `${NEWEBPAY_CLOSE_BASE_URL[getNewebPayEnvName()]}/API/CreditCard/Close`;
+  return `${NEWEBPAY_BASE_URL[getNewebPayEnvName()]}/API/CreditCard/Close`;
+}
+
+/** 建立委托 [NPA-B05]，浏览器 Form Post gateway（同 MPG，需使用者在藍新页面输入卡号） */
+export function getNewebPayPeriodCreateUrl() {
+  return `${NEWEBPAY_BASE_URL[getNewebPayEnvName()]}/MPG/period`;
+}
+
+/** 修改委托状态 [NPA-B051]，伺服器对伺服器 API（suspend/terminate/restart） */
+export function getNewebPayPeriodAlterStatusUrl() {
+  return `${NEWEBPAY_BASE_URL[getNewebPayEnvName()]}/MPG/period/AlterStatus`;
+}
+
+/** 修改委托内容 [NPA-B052]，伺服器对伺服器 API（改金额/周期/期数等） */
+export function getNewebPayPeriodAlterAmtUrl() {
+  return `${NEWEBPAY_BASE_URL[getNewebPayEnvName()]}/MPG/period/AlterAmt`;
 }
 
 function getSiteUrl() {

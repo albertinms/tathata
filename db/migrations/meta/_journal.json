@@ -64,6 +64,13 @@
       "when": 1784246095445,
       "tag": "0008_t3_1_newebpay_purchases",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784256853124,
+      "tag": "0009_t3_2_t3_3_newebpay_subscriptions",
+      "breakpoints": true
     }
   ]
 }

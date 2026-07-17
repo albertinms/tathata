@@ -68,9 +68,12 @@ describe("entitlements engine (integration)", () => {
     await db
       .insert(planEntitlements)
       .values({ planId: premiumPlanId, resourceType: "chapter", resourcePattern: "*" });
-    await db
-      .insert(subscriptions)
-      .values({ userId, planId: premiumPlanId, status: "active" });
+    await db.insert(subscriptions).values({
+      userId,
+      planId: premiumPlanId,
+      status: "active",
+      newebpayMerOrderNo: `test-sub-${Date.now()}`,
+    });
 
     expect(await canAccessChapter(userId, "flow_2026_08")).toBe(true);
   });
