@@ -71,6 +71,13 @@
       "when": 1784256853124,
       "tag": "0009_t3_2_t3_3_newebpay_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784258129247,
+      "tag": "0010_t6_2_seed_booking_services",
+      "breakpoints": true
     }
   ]
 }
